@@ -22,6 +22,8 @@ This project focuses on practical multimodal interaction while keeping memory us
 
 🧠 No external APIs required (fully local)
 
+<br><br>
+
 ## Architecture Overview
 - MiniCPM-V-4.5 (INT4)
   - Runs on GPU via device_map="auto"
@@ -37,6 +39,7 @@ This project focuses on practical multimodal interaction while keeping memory us
 
 This separation allows smooth interaction even on consumer GPUs.
 
+<br><br>
 
 ## Requirements
 
@@ -49,7 +52,7 @@ Software
 - CUDA-enabled PyTorch
 - Linux recommended (WSL2 works well)
 
-
+<br><br>
 ## Installation
 
 ```bash
@@ -85,7 +88,6 @@ wget -O en_US-libritts_r-medium.onnx \
 wget -O en_US-libritts_r-medium.onnx.json \
   https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/libritts_r/medium/en_US-libritts_r-medium.onnx.json
 ```
-<br><br>
 
 Feel free to switch the wget to a different `piper` voice model.
 
@@ -100,6 +102,7 @@ The Gradio interface will launch on:
 ```
 http://localhost:7860
 ```
+<br><br>
 
 ## Usage Notes
 - Voice input/output is fully offline
@@ -108,6 +111,7 @@ http://localhost:7860
   - Volume adjustment
   - Instant reversal toggle (normal ↔ reversed)
 
+<br><br>
 
 ## License
 
@@ -119,12 +123,16 @@ Model weights and third-party tools (MiniCPM, Stable Diffusion, Whisper, Piper, 
 
 See the LICENSE file for details.
 
+<br><br>
+
 ## Acknowledgements
 - OpenBMB — MiniCPM-V
 - Hugging Face — Transformers & Diffusers
 - OpenAI — Whisper (via faster-whisper)
 - Gradio — UI framework
 - Piper TTS — Offline speech synthesis
+
+<br><br>
 
 ## Disclaimer
 This project is intended for research, experimentation, and educational use.
