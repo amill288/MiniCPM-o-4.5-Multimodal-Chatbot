@@ -71,6 +71,8 @@ mv MiniCPM-o-4.5-Multimodal-Chatbot MiniCPM
 cd MiniCPM
 
 # 1. Create venv
+sudo apt update
+sudo apt install -y python3-venv
 python -m venv .venv
 source .venv/bin/activate
 
