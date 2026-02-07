@@ -55,6 +55,8 @@ Software
 wsl --install -d Ubuntu-24.04 --name MiniCPM-demo
 ```
 
+Create a User Name and Password for WSL
+
 <br>
 
 #### Close CMD and Open MiniCPM-demo
