@@ -4,6 +4,8 @@ A local, GPU-efficient multimodal chatbot built around MiniCPM-V-4.5, supporting
 
 This project focuses on practical multimodal interaction while keeping memory usage under control through careful model loading, CPU/GPU separation, and optional components.
 
+<br><br>
+
 ## Features
 
 💬 Text chat with MiniCPM-V
