@@ -4,7 +4,7 @@ MiniCPM-o-4.5 Multimodal Chatbot
 
 
 
-#MiniCPM-V Multimodal Chatbot (12GB-Friendly)
+# MiniCPM-V Multimodal Chatbot (12GB-Friendly)
 
 A local, GPU-efficient multimodal chatbot built around MiniCPM-V-4.5, supporting text, image understanding, voice input, offline text-to-speech, and optional image generation — all runnable on a single 12GB GPU.
 
