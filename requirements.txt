@@ -35,3 +35,5 @@ tqdm
 regex
 requests
 python-dotenv
+
+bitsandbytes>=0.49.0
