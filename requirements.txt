@@ -1,31 +1,37 @@
-# Hugging Face
-transformers>=4.39
-accelerate
-safetensors
-
-# UI
-gradio>=4.0
-
-# Image + array handling
-pillow
-numpy
-
-# Audio I/O
-soundfile
-
-# Optional: Speech-to-text (CPU)
-faster-whisper
-
-# Optional: Image generation
-diffusers>=0.27
-
-# Utilities
-tqdm
-regex
-
 # Piper
 pathvalidate
 piper-tts
 
-bitsandbytes>=0.46.1
 
+# Core ML / HF
+transformers>=4.51
+accelerate
+safetensors
+tokenizers
+
+# UI
+gradio>=6.5
+
+# Images & arrays
+numpy
+pillow
+
+# Audio I/O + TTS helpers
+soundfile
+pydub
+piper-tts
+pathvalidate
+
+# Speech-to-text (CPU)
+faster-whisper
+ctranslate2
+av
+
+# Optional image generation
+diffusers>=0.36
+
+# Utilities
+tqdm
+regex
+requests
+python-dotenv
