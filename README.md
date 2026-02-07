@@ -122,16 +122,7 @@ http://localhost:7860
 
 The first run will auto download the required safetensors, after that it will use checkpoints and run more quickly.
 
-
-## Usage Notes
-- Voice input/output is fully offline
-- Image generation is optional and can be disabled if VRAM is tight
-- Audio playback supports:
-  - Volume adjustment
-  - Instant reversal toggle (normal ↔ reversed)
-
 <br><br>
-
 
 ## Start Fresh (If need be)
 If something happened and you want to start over, from Windows CMD:
@@ -143,6 +134,17 @@ wsl --unregister MiniCPM-demo
 <br>
 
 Then start back at the top.
+
+<br><br>
+
+
+
+## Usage Notes
+- Voice input/output is fully offline
+- Image generation is optional and can be disabled if VRAM is tight
+- Audio playback supports:
+  - Volume adjustment
+  - Instant reversal toggle (normal ↔ reversed)
 
 <br><br>
 
