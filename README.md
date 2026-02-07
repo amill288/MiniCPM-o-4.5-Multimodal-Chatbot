@@ -72,13 +72,13 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 pip install -r requirements.txt
 
 ```
-
-<br><br>
+<br>
 
 You’ll also need:
 - A Piper voice model (ONNX)
 - `piper` available on your PATH
 
+<br>
 
 ```
 mkdir -p ~/piper_voices/libritts_r_medium
