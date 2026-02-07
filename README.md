@@ -50,13 +50,15 @@ Software
 <br><br>
 ## Installation
 
-From Windows CMD:
+#### From Windows CMD:
 ```
 wsl --install -d Ubuntu-24.04 --name MiniCPM-demo
 ```
 
 <br>
-Close CMD and Open MiniCPM-demo
+
+#### Close CMD and Open MiniCPM-demo
+
 <br>
 
 ```bash
