@@ -29,7 +29,7 @@ This project focuses on practical multimodal interaction while keeping memory us
 🧠 No external APIs required (fully local)
 
 
-##Architecture Overview
+## Architecture Overview
 
 - MiniCPM-V-4.5 (INT4)
 
