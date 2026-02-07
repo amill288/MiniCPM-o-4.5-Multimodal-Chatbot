@@ -100,6 +100,8 @@ wget -O en_US-libritts_r-medium.onnx \
 
 wget -O en_US-libritts_r-medium.onnx.json \
   https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/libritts_r/medium/en_US-libritts_r-medium.onnx.json
+
+cd ~/MiniCPM
 ```
 
 Feel free to switch the wget to a different `piper` voice model.
