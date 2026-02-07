@@ -330,24 +330,91 @@ def get_sd_pipeline():
     return pipe
 
 
-def generate_image(prompt: str, steps: int = 4) -> Optional[Image.Image]:
+def generate_image(prompt: str, steps: int = 4, width: int = 512, height: int = 512) -> Optional[Image.Image]:
     pipe = get_sd_pipeline()
     if pipe is None:
         return None
 
-    # Move to GPU briefly
     if torch.cuda.is_available():
         pipe.to("cuda")
 
     with torch.inference_mode():
-        img = pipe(prompt=prompt, num_inference_steps=steps, guidance_scale=0.0).images[0]
+        img = pipe(
+            prompt=prompt,
+            num_inference_steps=int(steps),
+            guidance_scale=0.0,
+            height=int(height),
+            width=int(width),
+        ).images[0]
 
-    # Move back to CPU and free VRAM
     pipe.to("cpu")
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
     return img
+
+
+
+
+
+
+_SD_REFINE = None
+
+def get_sd_refine_pipeline():
+    global _SD_REFINE
+    if _SD_REFINE is not None:
+        return _SD_REFINE
+    if not _try_import_diffusers():
+        return None
+
+    from diffusers import AutoPipelineForImage2Image
+
+    sd_id = "stabilityai/sd-turbo"  # start simple; can swap later for higher-quality checkpoint
+    pipe = AutoPipelineForImage2Image.from_pretrained(
+        sd_id,
+        torch_dtype=torch.float16,
+        variant="fp16",
+    )
+
+    # helps VRAM a bit
+    try:
+        pipe.enable_attention_slicing()
+    except Exception:
+        pass
+
+    pipe = pipe.to("cpu")
+    _SD_REFINE = pipe
+    return pipe
+
+
+
+
+
+def refine_image(img: Image.Image, prompt: str, steps: int = 20, strength: float = 0.35, guidance: float = 5.5) -> Optional[Image.Image]:
+    pipe = get_sd_refine_pipeline()
+    if pipe is None or img is None:
+        return None
+
+    if torch.cuda.is_available():
+        pipe.to("cuda")
+
+    with torch.inference_mode():
+        out = pipe(
+            prompt=prompt,
+            image=img,
+            num_inference_steps=int(steps),
+            strength=float(strength),
+            guidance_scale=float(guidance),
+        ).images[0]
+
+    pipe.to("cpu")
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    return out
+
+
+
 
 
 
@@ -657,14 +724,15 @@ def do_transcribe(mic_audio):
     return transcribe_audio(mic_audio)
 
 
-def do_generate_image(prompt: str):
-    prompt = (prompt or "").strip()
-    if not prompt:
-        return None
-    img = generate_image(prompt, steps=4)
+def do_generate_image(prompt, steps, width, height, do_refine, refine_steps, refine_strength, refine_cfg):
+    img = generate_image(prompt, steps=steps, width=width, height=height)
     if img is None:
         return None
+    if do_refine:
+        img2 = refine_image(img, prompt, steps=refine_steps, strength=refine_strength, guidance=refine_cfg)
+        return img2 or img
     return img
+
 
 def toggle_reverse_audio(last_audio_path, is_reversed):
     if not last_audio_path:
@@ -768,10 +836,32 @@ with gr.Blocks(title="MiniCPM-o-4.5 Multimodal Chatbot (12GB-friendly)") as demo
     with gr.Row():
         img_prompt = gr.Textbox(label="Image prompt", placeholder="A robot reading a book, cinematic lighting", lines=1)
         gen_img_btn = gr.Button("Generate image", variant="primary")
+        with gr.Column():
+            sd_steps = gr.Slider(1, 8, value=4, step=1, label="Draft steps (Turbo)")
+            sd_w = gr.Dropdown([384, 512, 640, 768], value=512, label="Width")
+            sd_h = gr.Dropdown([384, 512, 640, 768], value=512, label="Height")
+        with gr.Column():
+            do_refine = gr.Checkbox(value=False, label="HD refine (img2img)")
+            refine_steps = gr.Slider(5, 40, value=20, step=1, label="Refine steps")
+            refine_strength = gr.Slider(0.1, 0.7, value=0.35, step=0.05, label="Refine strength")
+            refine_cfg = gr.Slider(1.0, 9.0, value=5.5, step=0.5, label="Refine CFG")
         clear_btn_img = gr.Button("Clear",variant="stop")
     gen_img_out = gr.Image(label="Generated image")
 
 
+    """
+    with gr.Row():
+        sd_steps = gr.Slider(1, 8, value=4, step=1, label="Draft steps (Turbo)")
+        sd_w = gr.Dropdown([384, 512, 640, 768], value=512, label="Width")
+        sd_h = gr.Dropdown([384, 512, 640, 768], value=512, label="Height")
+
+    with gr.Row():
+        do_refine = gr.Checkbox(value=False, label="HD refine (img2img)")
+        refine_steps = gr.Slider(5, 40, value=20, step=1, label="Refine steps")
+        refine_strength = gr.Slider(0.1, 0.7, value=0.35, step=0.05, label="Refine strength")
+        refine_cfg = gr.Slider(1.0, 9.0, value=5.5, step=0.5, label="Refine CFG")
+
+    """
 
 
     """
@@ -935,18 +1025,17 @@ with gr.Blocks(title="MiniCPM-o-4.5 Multimodal Chatbot (12GB-friendly)") as demo
 
 
 
-    gen_img_btn.click(
-        fn=do_generate_image,
-        inputs=[img_prompt],
-        outputs=[gen_img_out],
-    )
-
     img_prompt.submit(
         fn=do_generate_image,
-        inputs=[img_prompt],
+        inputs=[img_prompt, sd_steps, sd_w, sd_h, do_refine, refine_steps, refine_strength, refine_cfg],
         outputs=[gen_img_out],
     )
 
+    gen_img_btn.click(
+        fn=do_generate_image,
+        inputs=[img_prompt, sd_steps, sd_w, sd_h, do_refine, refine_steps, refine_strength, refine_cfg],
+        outputs=[gen_img_out],
+    )
 
     clear_btn_stream.click(
         fn=_clear_stream,
