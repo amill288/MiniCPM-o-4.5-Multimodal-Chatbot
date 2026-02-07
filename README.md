@@ -132,6 +132,18 @@ The first run will auto download the required safetensors, after that it will us
 
 <br><br>
 
+
+## Start Fresh (If need be)
+If something happened and you want to start over, from Windows CMD:
+<br>
+
+```
+wsl --unregister MiniCPM-demo
+```
+<br>
+
+Then start back at the top.
+
 ## License
 
 This project is licensed under the MIT License.
