@@ -27,4 +27,5 @@ regex
 pathvalidate
 piper-tts
 
-bitsandbytes>=0.46.1`
+bitsandbytes>=0.46.1
+
