@@ -55,10 +55,15 @@ From Windows CMD:
 wsl --install -d Ubuntu-24.04 --name MiniCPM-demo
 ```
 
+<br>
+Close CMD and Open MiniCPM-demo
+<br>
 
 ```bash
-git clone https://github.com/amill288/MiniCPM-o-4.5_Multimodal-Chatbot.git
+# 0. Create folder and clone repo
+mkdir ~/MiniCPM
 cd MiniCPM
+git clone https://github.com/amill288/MiniCPM-o-4.5_Multimodal-Chatbot.git
 
 # 1. Create venv
 python -m venv .venv
