@@ -73,7 +73,7 @@ cd MiniCPM
 # 1. Create venv
 sudo apt update
 sudo apt install -y python3-venv
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 
 # 2. Install PyTorch first (CUDA-specific)
