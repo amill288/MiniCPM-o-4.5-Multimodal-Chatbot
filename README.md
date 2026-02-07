@@ -68,9 +68,14 @@ Software
 git clone https://github.com/amill288/MiniCPM-o-4.5_Multimodal-Chatbot.git
 cd MiniCPM
 
+# 1. Create venv
 python -m venv .venv
 source .venv/bin/activate
 
+# 2. Install PyTorch first (CUDA-specific)
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+# 3. Install the rest
 pip install -r requirements.txt
 
 ```
