@@ -13,6 +13,9 @@ import numpy as np
 import hashlib
 from dataclasses import dataclass, field
 from collections import OrderedDict
+import hashlib
+from dataclasses import dataclass, field
+from collections import OrderedDict
 
 
 # Keep history bounded to avoid VRAM/latency blowups
@@ -68,6 +71,169 @@ def get_minicpm_tokenizer():
         trust_remote_code=True,
     )
     return _TOKENIZER
+
+
+
+
+
+def _sha1_image(pil_img: Image.Image) -> str:
+    # Stable hash for caching: encode to PNG bytes in-memory
+    import io
+    buf = io.BytesIO()
+    pil_img.save(buf, format="PNG")
+    return hashlib.sha1(buf.getvalue()).hexdigest()
+
+
+class LRUCache(OrderedDict):
+    def __init__(self, max_items=32):
+        super().__init__()
+        self.max_items = int(max_items)
+
+    def get(self, key, default=None):
+        if key in self:
+            self.move_to_end(key)
+            return super().get(key)
+        return default
+
+    def put(self, key, value):
+        self[key] = value
+        self.move_to_end(key)
+        while len(self) > self.max_items:
+            self.popitem(last=False)
+
+
+
+class MMState:
+    def __init__(self):
+        self.msgs = []                 # model messages
+        self.last_image_id = None      # active image context
+        self.image_store = {}          # image_id -> PIL (CPU)
+        self.vision_cache = LRUCache(max_items=16)  # image_id -> embedding or None
+
+
+
+class MiniCPMAgent:
+    """
+    Reusable multimodal agent wrapper:
+    - Keeps model conversation state
+    - Caches vision embedding (if model exposes a usable hook)
+    - Streams tokens (text + image reasoning)
+    """
+    def __init__(self):
+        self.model = get_minicpm_model()
+        self.tok = get_minicpm_tokenizer()
+
+    # -------- Vision caching (best-effort) --------
+    def _compute_vision_embedding_if_possible(self, pil_img: Image.Image):
+        """
+        MiniCPM internals vary by version. We try a few common hooks.
+        If none exist, return None and we’ll still cache the PIL + avoid re-adding images to history.
+        """
+        m = self.model
+
+        # Try common method names (safe checks).
+        # If your model exposes something different, we can wire it here.
+        for name in ["get_vision_embedding", "encode_image", "vision_encode", "extract_vision_features"]:
+            fn = getattr(m, name, None)
+            if callable(fn):
+                try:
+                    with torch.inference_mode():
+                        return fn(pil_img)
+                except Exception:
+                    pass
+
+        return None
+
+    def _materialize_mm_content(self, state: MMState, image_id: Optional[str], text: str):
+        """
+        Convert (image_id, text) into the content format MiniCPM expects.
+        Your current model expects either:
+          - text string
+          - [PIL_image, text]
+        """
+        if image_id is None:
+            return text
+
+        pil = state.image_store.get(image_id)
+        if pil is None:
+            # Shouldn’t happen, but fail gracefully
+            return text
+
+        # If we have a vision embedding cache AND a model hook to accept it, you can wire it here later.
+        # For now, we still pass PIL (compatible), but we avoid re-adding the same image repeatedly.
+        return [pil, text]
+
+    # -------- Core chat (streaming) --------
+    def stream_chat(self, state: MMState, user_text: str, user_image: Optional[Image.Image]):
+        """
+        Yields incremental assistant text chunks.
+        """
+        user_text = (user_text or "").strip()
+
+        # Handle new image
+        if user_image is not None:
+            user_image = user_image.convert("RGB")
+            image_id = _sha1_image(user_image)
+            state.image_store[image_id] = user_image
+            state.last_image_id = image_id
+
+            # Best-effort cache: compute embedding once per unique image
+            if state.vision_cache.get(image_id) is None:
+                emb = self._compute_vision_embedding_if_possible(user_image)
+                state.vision_cache.put(image_id, emb)
+
+        # If user didn’t upload a new image, keep using last_image_id (so follow-ups refer to it)
+        active_image_id = state.last_image_id
+
+        # Build model-facing message content
+        if user_image is not None:
+            mm_content = self._materialize_mm_content(state, active_image_id, user_text or "Describe this image.")
+        else:
+            mm_content = user_text
+
+        # Append user message to model state
+        state.msgs.append({"role": "user", "content": mm_content})
+        state.msgs = state.msgs[-(MAX_TURNS * 2):]  # crude bound, keep your existing trim if preferred
+
+        # STREAMING: model.chat(stream=True) usually yields text fragments for MiniCPM-style repos.
+        # If it returns a generator of dicts, we handle that too.
+        acc = ""
+        try:
+            out = self.model.chat(
+                msgs=state.msgs,
+                tokenizer=self.tok,
+                stream=True,                  # <--- key
+                enable_thinking=False,
+                use_tts_template=False,
+                max_slice_nums=1,
+                use_image_id=False,           # keep stable; we do app-level caching
+            )
+
+            # Normalize streaming output
+            if isinstance(out, str):
+                acc = out
+                yield acc
+            else:
+                for chunk in out:
+                    # chunk might be str or dict depending on implementation
+                    if isinstance(chunk, str):
+                        acc += chunk
+                    elif isinstance(chunk, dict):
+                        # common keys: "text", "delta"
+                        acc += chunk.get("text", chunk.get("delta", ""))
+                    else:
+                        acc += str(chunk)
+                    yield acc
+
+        finally:
+            # Save final assistant message to model state
+            if acc.strip():
+                state.msgs.append({"role": "assistant", "content": acc})
+                state.msgs = state.msgs[-(MAX_TURNS * 2):]
+
+
+
+
 
 
 
@@ -236,24 +402,10 @@ def wav_reverse(in_wav: str) -> str:
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # -----------------------------
 # Chat function 
 # -----------------------------
-def chat_step(chat_ui, msgs_state, user_text, user_image, speak_back, tts_volume_val,reverse_after, last_audio_state):
+def chat_step(chat_ui, msgs_state, user_text, user_image, speak_back, tts_volume_val,reverse_after, last_audio_state,is_reversed_state):
 
     # normalize inputs (IMPORTANT)
     tts_volume_val = 1.0 if tts_volume_val is None else float(tts_volume_val)
@@ -416,6 +568,85 @@ def chat_step(chat_ui, msgs_state, user_text, user_image, speak_back, tts_volume
 
 
 
+
+
+
+def chat_step_stream(chat_ui, mm_state: MMState, user_text, user_image,
+                     speak_back, tts_volume_val, reverse_after,
+                     last_audio_state, is_reversed_state):
+    if mm_state is None:
+        mm_state = MMState()
+
+    # ---- UI normalize ----
+    def _as_messages(x):
+        if x is None:
+            return []
+        if isinstance(x, list) and (len(x) == 0 or isinstance(x[0], dict)):
+            return x
+        if isinstance(x, list) and len(x) > 0 and isinstance(x[0], (tuple, list)) and len(x[0]) == 2:
+            msgs = []
+            for u, a in x:
+                msgs.append({"role": "user", "content": str(u)})
+                msgs.append({"role": "assistant", "content": str(a)})
+            return msgs
+        return []
+
+    chat_ui_msgs = _as_messages(chat_ui)
+
+    # ---- image normalize (your existing logic) ----
+    pil_img = None
+    if user_image is not None:
+        if isinstance(user_image, np.ndarray):
+            pil_img = Image.fromarray(user_image.astype(np.uint8)).convert("RGB")
+        elif isinstance(user_image, Image.Image):
+            pil_img = user_image.convert("RGB")
+
+    user_text = (user_text or "").strip()
+    if not user_text and pil_img is None:
+        yield chat_ui_msgs, mm_state, "", None, last_audio_state, is_reversed_state
+        return
+
+    ui_user_content = user_text if user_text else ("[image]" if pil_img is not None else "")
+    chat_ui_msgs.append({"role": "user", "content": ui_user_content})
+
+    # Add placeholder assistant message we will update as we stream
+    chat_ui_msgs.append({"role": "assistant", "content": ""})
+
+    # ---- stream from agent ----
+    partial = ""
+    for partial in agent.stream_chat(mm_state, user_text=user_text, user_image=pil_img):
+        chat_ui_msgs[-1]["content"] = partial
+        yield chat_ui_msgs, mm_state, "", None, last_audio_state, is_reversed_state
+
+    # ---- Optional: do TTS once at the end (avoid re-speaking partials) ----
+    audio_path = None
+    new_last_audio = last_audio_state
+    new_is_reversed = is_reversed_state
+
+    tts_volume_val = 1.0 if tts_volume_val is None else float(tts_volume_val)
+    reverse_after = bool(reverse_after) if reverse_after is not None else False
+
+    if speak_back and partial.strip():
+        normal_path = tts_to_wav(clean_for_tts(partial))
+        normal_path = wav_apply_volume(normal_path, tts_volume_val)
+        audio_path = normal_path
+        new_last_audio = normal_path
+        new_is_reversed = False
+
+        if reverse_after:
+            audio_path = wav_reverse(normal_path)
+            new_is_reversed = True
+
+    yield chat_ui_msgs, mm_state, "", audio_path, new_last_audio, new_is_reversed
+
+
+
+
+
+
+
+
+
 def do_transcribe(mic_audio):
     """
     mic_audio from Gradio Audio: (sr, np.ndarray) or a filepath depending on type.
@@ -466,37 +697,62 @@ with gr.Blocks(title="MiniCPM-o-4.5 Multimodal Chatbot (12GB-friendly)") as demo
     )
     
     msgs_state = gr.State([])  # MiniCPM messages
+    mm_state = gr.State(None)
+    agent = MiniCPMAgent()
+
     chat_ui = gr.Chatbot(height=420)
 
     with gr.Row():
         with gr.Column():
-            gr.Markdown("## Voice input (Speech → Text)")
-            with gr.Row():
-                mic = gr.Audio(sources=["microphone"], type="filepath", label="Record voice")
-                #transcribe_btn = gr.Button("Transcribe → Put into message box")
-
-            user_text = gr.Textbox(label="Message", placeholder="Type here...", scale=3, lines=1)
+            gr.Markdown("## Chat Text Input")
+            user_text_stream = gr.Textbox(label="Message", placeholder="Type here...", scale=3, lines=1, visible=True)
+            user_text = gr.Textbox(label="Message", placeholder="Type here...", scale=3, lines=1, visible=False)
+            text_markdown_speech = gr.Markdown("## Voice input (Speech → Text)", visible=False)
+            mic_stream = gr.Audio(sources=["microphone"], type="filepath", label="Record voice", visible=False)
+            mic = gr.Audio(sources=["microphone"], type="filepath", label="Record voice", visible=False)
         user_image = gr.Image(label="Optional image", type="pil", scale=2)
 
+    with gr.Blocks():
+        # Horizontal line separator
+         gr.HTML("<hr style='border: 1px solid #bbb; margin: 20px 0;'>")
    
     with gr.Row():
         reverse_btn = gr.Button("Reverse Audio", variant="huggingface")
-        send_btn = gr.Button("Send", variant="primary")
-        clear_btn = gr.Button("Clear",variant="stop")
+        send_btn_stream = gr.Button("Send", variant="primary", visible=True)
+        clear_btn_stream = gr.Button("Clear",variant="stop", visible=True)
+
+        send_btn= gr.Button("Send", variant="primary", visible=False)
+        clear_btn = gr.Button("Clear",variant="stop", visible=False)
         
         
         
   
 
     out_audio = gr.Audio(label="Assistant voice", autoplay=True)
-
+    #out_audio_stream = gr.Audio(streaming=True, autoplay=True, label="Streaming TTS")
   
+
+    with gr.Blocks():
+        # Horizontal line separator
+         gr.HTML("<hr style='border: 1px solid #bbb; margin: 05px 0;'>")
+
+    gr.Markdown("## Response Options")
     with gr.Row():
         with gr.Column(scale=0.2):
             tts_volume = gr.Slider(0.2, 2.0, value=0.5, step=0.05, label="TTS Volume")
         with gr.Column(scale=0.2):
             speak_back = gr.Checkbox(value=True, label="Speak responses (TTS)")
             reverse_after = gr.Checkbox(value=False, label="Play reverse")
+        with gr.Column(scale=0.2):
+            mode = gr.Radio(
+                choices=["stream", "final"],
+                value="stream",
+                label="Response Mode",
+                info="stream = token streaming, final = wait until done"
+            )
+        with gr.Column(scale=0.2):
+            voice_enabled = gr.Checkbox(value=False, label="Voice input (mic) enabled")
+
         
 
 
@@ -516,9 +772,7 @@ with gr.Blocks(title="MiniCPM-o-4.5 Multimodal Chatbot (12GB-friendly)") as demo
     gen_img_out = gr.Image(label="Generated image")
 
 
-    with gr.Blocks():
-        # Horizontal line separator
-         gr.HTML("<hr style='border: 1px solid #bbb; margin: 80px 0;'>")
+
 
     """
     gr.Markdown("## Voice input (Speech → Text)")
@@ -526,10 +780,30 @@ with gr.Blocks(title="MiniCPM-o-4.5 Multimodal Chatbot (12GB-friendly)") as demo
         mic = gr.Audio(sources=["microphone"], type="filepath", label="Record voice")
         transcribe_btn = gr.Button("Transcribe → Put into message box")
     """
+
+    def toggle_audio_mode(mode):
+        return (
+            gr.update(visible=(mode == "stream")),
+            gr.update(visible=(mode == "final"))
+        )
+
+
+    def _clear_stream():
+        chat_ui = []
+        mm_state = []
+        user_text_stream = ""
+        out_audio = None
+        user_image = None
+        mic_stream = None
+        last_audio_state = None
+        is_reversed_state = None
+        return chat_ui, mm_state, user_text_stream, out_audio, user_image, mic_stream, last_audio_state, is_reversed_state
+    
+
     def _clear():
         chat_ui = []
         msgs_state = []
-        user_text = ""
+        user_text_ = ""
         out_audio = None
         user_image = None
         mic = None
@@ -537,10 +811,36 @@ with gr.Blocks(title="MiniCPM-o-4.5 Multimodal Chatbot (12GB-friendly)") as demo
         is_reversed_state = None
         return chat_ui, msgs_state, user_text, out_audio, user_image, mic, last_audio_state, is_reversed_state
     
+
     def _clear_img():
         gen_img_out = None
         img_prompt = ""
         return gen_img_out, img_prompt
+
+
+    def apply_visibility(mode_val, voice_on):
+        is_stream = (mode_val == "stream")
+        voice_on = bool(voice_on)
+
+        return (
+            # textboxes
+            gr.update(visible=is_stream),        # user_text_stream
+            gr.update(visible=not is_stream),    # user_text
+
+            # mics (only show the active one IF voice_on)
+            gr.update(visible=is_stream and voice_on),      # mic_stream
+            gr.update(visible=(not is_stream) and voice_on),# mic
+
+            # send/clear buttons
+            gr.update(visible=is_stream),        # send_btn_stream
+            gr.update(visible=not is_stream),    # send_btn
+            gr.update(visible=is_stream),        # clear_btn_stream
+            gr.update(visible=not is_stream),    # clear_btn
+
+            gr.update(visible=voice_on),         # Mic Mardown Text
+        )
+
+
 
 
 
@@ -555,6 +855,20 @@ with gr.Blocks(title="MiniCPM-o-4.5 Multimodal Chatbot (12GB-friendly)") as demo
         inputs=[chat_ui, msgs_state, user_text, user_image, speak_back, tts_volume, reverse_after, last_audio_state],
         outputs=[chat_ui, msgs_state, user_text, out_audio, last_audio_state, is_reversed_state],
     )
+    
+
+    send_btn_stream.click(
+        fn=chat_step_stream,
+        inputs=[chat_ui, mm_state, user_text_stream, user_image, speak_back, tts_volume, reverse_after, last_audio_state, is_reversed_state],
+        outputs=[chat_ui, mm_state, user_text_stream, out_audio, last_audio_state, is_reversed_state],
+    )
+
+    user_text_stream.submit(
+        fn=chat_step_stream,
+        inputs=[chat_ui, mm_state, user_text_stream, user_image, speak_back, tts_volume, reverse_after, last_audio_state, is_reversed_state],
+        outputs=[chat_ui, mm_state, user_text_stream, out_audio, last_audio_state, is_reversed_state],
+    )
+
 
     """
     transcribe_btn.click(
@@ -578,7 +892,8 @@ with gr.Blocks(title="MiniCPM-o-4.5 Multimodal Chatbot (12GB-friendly)") as demo
             speak_back,
             tts_volume,
             reverse_after,
-            last_audio_state
+            last_audio_state,
+            is_reversed_state,
         ],
         outputs=[
             chat_ui,
@@ -589,6 +904,35 @@ with gr.Blocks(title="MiniCPM-o-4.5 Multimodal Chatbot (12GB-friendly)") as demo
             is_reversed_state
         ],
     )
+
+
+    mic_stream.change(
+        fn=do_transcribe,
+        inputs=[mic_stream],
+        outputs=[user_text_stream],
+    ).then(
+        fn=chat_step_stream,
+        inputs=[
+            chat_ui,
+            mm_state,
+            user_text_stream,
+            user_image,
+            speak_back,
+            tts_volume,
+            reverse_after,
+            last_audio_state,
+            is_reversed_state,
+        ],
+        outputs=[
+            chat_ui,
+            mm_state,
+            user_text_stream,
+            out_audio,
+            last_audio_state,
+            is_reversed_state
+        ],
+    )
+
 
 
     gen_img_btn.click(
@@ -604,10 +948,16 @@ with gr.Blocks(title="MiniCPM-o-4.5 Multimodal Chatbot (12GB-friendly)") as demo
     )
 
 
+    clear_btn_stream.click(
+        fn=_clear_stream,
+        inputs=[],
+        outputs=[chat_ui, mm_state, user_text_stream, out_audio, user_image, mic, last_audio_state, is_reversed_state],
+    )
+
     clear_btn.click(
         fn=_clear,
         inputs=[],
-        outputs=[chat_ui, msgs_state, user_text, out_audio, user_image, mic, last_audio_state, is_reversed_state],
+        outputs=[chat_ui, msgs_state, user_text, out_audio, user_image, mic, last_audio_state, is_reversed_state],   
     )
 
     clear_btn_img.click(
@@ -623,6 +973,32 @@ with gr.Blocks(title="MiniCPM-o-4.5 Multimodal Chatbot (12GB-friendly)") as demo
         inputs=[last_audio_state, is_reversed_state],
         outputs=[out_audio, is_reversed_state],
     )
+
+    mode.change(
+        fn=apply_visibility,
+        inputs=[mode, voice_enabled],
+        outputs=[
+            user_text_stream, user_text,
+            mic_stream, mic,
+            send_btn_stream, send_btn,
+            clear_btn_stream, clear_btn,
+            text_markdown_speech,
+        ],
+    )
+
+    voice_enabled.change(
+        fn=apply_visibility,
+        inputs=[mode, voice_enabled],
+        outputs=[
+            user_text_stream, user_text,
+            mic_stream, mic,
+            send_btn_stream, send_btn,
+            clear_btn_stream, clear_btn,
+            text_markdown_speech,
+        ],
+    )
+
+
 
 
 
