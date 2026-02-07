@@ -1,0 +1,28 @@
+# Hugging Face
+transformers>=4.39
+accelerate
+safetensors
+
+# UI
+gradio>=4.0
+
+# Image + array handling
+pillow
+numpy
+
+# Audio I/O
+soundfile
+
+# Optional: Speech-to-text (CPU)
+faster-whisper
+
+# Optional: Image generation
+diffusers>=0.27
+
+# Utilities
+tqdm
+regex
+
+# Piper
+pathvalidate
+piper-tts
