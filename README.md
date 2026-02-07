@@ -65,8 +65,8 @@ Software
 ## Installation
 
 ```bash
-git clone https://github.com/your-username/minicpm-multimodal-chatbot.git
-cd minicpm-multimodal-chatbot
+git clone https://github.com/amill288/MiniCPM-o-4.5_Multimodal-Chatbot.git
+cd MiniCPM
 
 python -m venv .venv
 source .venv/bin/activate
