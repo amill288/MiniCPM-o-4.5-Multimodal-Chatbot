@@ -116,15 +116,16 @@ cd ~/MiniCPM
 python minicpm.py
 ```
 
-## To stream webcam video:
+## Stream Webcam Video:
 
 ```
 cd ~/MiniCPM
 python webcam_live_gradio.py
 ```
 
+## Launch the App
 
-Enter into a browser window the address the Gradio interface will launch on:
+Browser Address (use localhost, not 0.0.0.0)
 ```
 http://localhost:7860
 ```
