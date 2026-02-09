@@ -25,3 +25,4 @@ requests
 python-dotenv==1.2.1
 bitsandbytes==0.49.1
 mss
+ffmpeg
