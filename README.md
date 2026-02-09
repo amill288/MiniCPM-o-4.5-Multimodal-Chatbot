@@ -116,7 +116,7 @@ cd ~/MiniCPM
 python minicpm.py
 ```
 
-## Stream Webcam Video:
+## Stream Webcam Video
 
 ```
 cd ~/MiniCPM
