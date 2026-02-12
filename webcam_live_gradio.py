@@ -359,11 +359,14 @@ JS = r"""
 demo.launch(js=JS)
 
 
-CSS="""
-#webcam-mirror * {
-  transform: none !important;
+
+CSS = """
+video.svelte-1tktvmr.flip {
+    transform: none !important;
 }
+
 """
+
 # Queue settings:
 # - default_concurrency_limit=1 helps ensure you don't get overlapping calls
 # - max_size=1 reduces backlog

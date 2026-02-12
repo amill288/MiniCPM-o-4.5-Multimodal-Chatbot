@@ -163,7 +163,7 @@ If something happened and you want to start over, from Windows CMD:
 <br>
 
 ```
-wsl --unregister MiniCPM-demo
+wsl --unregister AI-Sandbox
 ```
 <br>
 
