@@ -8,14 +8,16 @@ This project focuses on practical multimodal interaction while keeping memory us
 
 ## Features
 
+- No external APIs required (fully local)
+
 - Text chat with MiniCPM-o-4.5
-- Image understanding (vision + language)
 - Speech-to-text (offline, CPU-based Whisper)
 - Text-to-speech (offline Piper TTS)
 - Audio reversal & volume control
-- Optional text-to-image generation (Stable Diffusion Turbo)
+- Image Generation with SDXL normal, turboXL, or turbo
+- Img-Img pipelines
+- Image understanding (vision + language)
 - 12GB-GPU friendly design
-- No external APIs required (fully local)
 
 <br><br>
 
@@ -26,8 +28,8 @@ This project focuses on practical multimodal interaction while keeping memory us
   - faster-whisper on CPU (keeps GPU free)
 - Text-to-Speech
   - Piper (offline ONNX voice model)
-- Image Generation (Optional)
-  - Stable Diffusion Turbo
+- Image Generation 
+  - Stable Diffusion Normal, TurboXL, or Turbo
   - Loaded on CPU and moved to GPU only during inference
 - UI
   - Gradio Blocks interface
@@ -67,9 +69,8 @@ Create a User Name and Password for WSL
 ```bash
 # 0. Create folder and clone repo
 cd ~
-git clone https://github.com/amill288/MiniCPM-o-4.5-Multimodal-Chatbot.git
-mv MiniCPM-o-4.5-Multimodal-Chatbot MiniCPM
-cd MiniCPM
+git clone https://github.com/amill288/AI-Local-Sandbox.git
+cd AI-Local-Sandbox
 
 # 1. Create venv
 sudo apt update
@@ -104,7 +105,7 @@ wget -O en_US-libritts_r-medium.onnx \
 wget -O en_US-libritts_r-medium.onnx.json \
   https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/libritts_r/medium/en_US-libritts_r-medium.onnx.json
 
-cd ~/MiniCPM
+cd ~/AI-Local-Sandbox
 ```
 
 Feel free to switch the wget to a different `piper` voice model.
@@ -112,25 +113,45 @@ Feel free to switch the wget to a different `piper` voice model.
 <br><br>
 
 
+## After seleting a script below, Launch the App
+
+Browser Address (use localhost, not 0.0.0.0)
+```
+http://localhost:7860
+```
+
+<br><br>
+
 ## Running the App
 ```
-cd ~/MiniCPM
+cd ~/AI-Local-Sandbox
 python minicpm.py
 ```
 
 ## Stream Webcam Video
 
 ```
-cd ~/MiniCPM
+cd ~/AI-Local-Sandbox
 python webcam_live_gradio.py
 ```
 
-## Launch the App
 
-Browser Address (use localhost, not 0.0.0.0)
+## Generate Images Safely
+
 ```
-http://localhost:7860
+cd ~/AI-Local-Sandbox
+python sdxl_safe.py
 ```
+
+
+## Generate Images Custom
+
+```
+cd ~/AI-Local-Sandbox
+python sdxl.py
+```
+
+
 <br><br>
 
 The first run will auto download the required safetensors, after that it will use checkpoints and run more quickly.
