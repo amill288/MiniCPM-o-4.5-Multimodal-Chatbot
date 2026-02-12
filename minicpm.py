@@ -1336,7 +1336,9 @@ with gr.Blocks(title="MiniCPM-o-4.5 Multimodal Chatbot (12GB-friendly)") as demo
             mic_stream, mic,
             send_btn_stream, send_btn,
             clear_btn_stream, clear_btn,
-            text_markdown_speech
+            text_markdown_speech,
+            out_audio, out_audio_stream,
+            is_reversed_state,
      
         ],
     )
